@@ -1,0 +1,1164 @@
+---
+title: "gap_final"
+author: "Hadil"
+date: "2023-02-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+install.packages("optimx")
+install.packages("lme4")
+install.packages("Matrix")
+install.packages("ggplot2")
+install.packages("usethis")
+install.packages("tidyverse")
+install.packages("nlme")
+install.packages("janitor")
+install.packages("emmeans")
+install.packages("sjstats")
+install.packages("lmerTest")
+install.packages("MuMIn")
+devtools::install_github('cttobin/ggthemr')
+devtools::install_github("hadley/devtools")
+
+
+```
+
+
+```{r}
+library(Matrix)
+library(readxl)
+library(usethis)
+library(ggplot2)
+library(ggthemr)
+library(lme4)
+library(devtools)
+library(Matrix)
+library(DT)
+library(optimx)
+library(ggdist)
+library(brms)
+library(ggeffects)
+library(dplyr)
+library(tidyverse)
+library(nlme)
+library(emmeans)
+library(lmerTest)
+```
+
+
+```{r}
+ggthemr("fresh")
+library(readxl)
+Gap_final <- read_excel("Gap_final.xlsx")
+View(Gap_final)
+  janitor::clean_names() |>
+  mutate(participant = as.factor(participant),
+         group = as.factor(group),
+  )
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+hist(Gap_final$RT)
+log_rt <- log(Gap_final$RT)
+hist(log_rt)
+```
+
+## coding level factors
+```{r}
+Gap_final$Condition = ifelse(Gap_final$condition == "CONG", -0.5, 0.5)
+```
+
+```{r}
+Gap_final <- Gap_final %>%
+  mutate(hs1 = case_when(group == "AHS" ~ -1L, # baseline
+                          group == "HS1" ~ 1L,  # target
+                          TRUE      ~ 0L), # anything else
+         hs2 = case_when(group == "AHS" ~ -1L, # baseline
+                          group == "HS2" ~  1L, # target
+                          TRUE      ~ 0L), # anything else
+          rt1 = case_when(group == "AHS" ~ -1L, # baseline
+                          group == "RT1" ~  1L, # target
+                          TRUE      ~ 0L), # anything else
+          rt2 = case_when(group == "AHS" ~ -1L, # baseline
+                          group == "RT2" ~  1L, # target
+                          TRUE      ~ 0L))
+
+```
+
+
+```{r}
+Gap_final$group <- as.factor(Gap_final$group)
+Gap_final$item <- as.factor(Gap_final$item)
+Gap_final$key_resp_5_corr <- as.factor(Gap_final$key_resp_5_corr)
+
+str(Gap_final)
+```
+
+
+
+# RT per condition
+```{r}
+Gap_final |>
+  ggplot(aes(x = condition, y = log_rt, fill = group)) +
+  geom_boxplot()
+```
+```{r}
+Gap_final |>
+  mutate(key_resp_5_corr = as.numeric(as.character(key_resp_5_corr))) %>%
+  ggplot(aes(x = condition, y = key_resp_5_corr, fill = group)) +
+  geom_boxplot()
+```
+
+
+```{r}
+library(dplyr)
+
+summary_table <- Gap_final %>%
+  group_by(group, Condition) %>%
+  summarise(across(where(is.numeric),
+    Mean = mean(log_rt),
+    SD = sd(log_rt)
+  ) %>%
+  ungroup()
+
+print(summary_table)
+```
+
+
+## Data summary
+
+```{r}
+Gap_final %>%
+group_by(group) %>%
+  group_by(condition, group) %>%
+  summarise(across(where(is.numeric),
+    list(mean = ~ mean(.x, na.rm = TRUE), count = ~ sum(!is.na(.x)))))
+```
+```{r}
+Gap_final %>%
+  group_by(group) %>%
+  group_by(condition, group) %>%
+  summarise(across(
+    where(is.numeric),
+    list(mean = ~mean(.x, na.rm = TRUE),
+         count = ~sum(!is.na(.x)),
+         sd = ~sd(.x, na.rm = TRUE),     # Add standard deviation calculation
+         range = ~diff(range(.x, na.rm = TRUE)))   # Add range calculation
+    ))
+```
+```{r}
+Gap_final %>%
+  group_by(group) %>%
+  group_by(condition, group) %>%
+  summarise(across(
+    where(is.numeric),
+    list(mean = ~mean(.x, na.rm = TRUE),
+         count = ~sum(!is.na(.x)),
+         sd = ~sd(.x, na.rm = TRUE),
+         range = ~diff(range(.x, na.rm = TRUE)),
+         min = ~min(.x, na.rm = TRUE),     # Add minimum calculation
+         max = ~max(.x, na.rm = TRUE)      # Add maximum calculation
+    ))) 
+```
+
+
+```{r}
+Gap_final %>%
+group_by(group) %>%
+  summarise(across(where(is.numeric),
+    list(mean = ~ mean(.x, na.rm = TRUE), count = ~ sum(!is.na(.x)))))
+
+```
+```{r}
+Gap_final %>%
+  group_by(group) %>%
+  summarise(across(
+    where(is.numeric),
+    list(mean = ~mean(.x, na.rm = TRUE),
+         count = ~sum(!is.na(.x)),
+         sd = ~sd(.x, na.rm = TRUE),     # Add standard deviation calculation
+         range = ~diff(range(.x, na.rm = TRUE)))   # Add range calculation
+  ))
+```
+
+```{r}
+Gap_final %>%
+  group_by(group) %>%
+  summarise(across(
+    where(is.numeric),
+    list(mean = ~mean(.x, na.rm = TRUE),
+         count = ~sum(!is.na(.x)),
+         sd = ~sd(.x, na.rm = TRUE),     # Add standard deviation calculation
+         range = ~diff(range(.x, na.rm = TRUE)),   # Add range calculation
+         min = ~min(.x, na.rm = TRUE),     # Add minimum calculation
+         max = ~max(.x, na.rm = TRUE))     # Add maximum calculation
+  ))
+```
+
+
+
+```{r}
+library(dplyr)
+
+sum_table <- Gap_final %>%
+  mutate(key_resp_5_corr = as.numeric(as.character(key_resp_5_corr))) %>%
+  group_by(condition, group) %>%
+  summarise(
+    Total = mean(key_resp_5_corr)
+  ) %>%
+  ungroup()
+
+print(sum_table)
+```
+```{r}
+sum_table <- Gap_final %>%
+  mutate(key_resp_5_corr = as.numeric(as.character(key_resp_5_corr))) %>%
+  group_by(condition, group) %>%
+  summarise(
+    Total = mean(key_resp_5_corr),
+    SD = sd(key_resp_5_corr),
+    Min = min(key_resp_5_corr),
+    Max = max(key_resp_5_corr)
+  ) %>%
+  ungroup()
+
+print(sum_table)
+```
+
+
+
+```{r}
+
+
+#first load in the packages you want
+require(lme4)
+require(MuMIn)
+install.packages("rsq")
+library(rsq)
+```
+
+```{r}
+# Fit a model including fixed and all random effects
+mF <- lmer(log_rt ~ group + length + condition + group * condition +group * Dom_scale + group*English_scale + group*Arabic_scale + (1|participant) + (1|item), data = Gap_final)
+
+mF2 <- glmer(key_resp_5_corr ~ group + condition+ group * condition + (1|participant) + (1|item),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+anova(mF)
+eta_sq(mF, partial = TRUE)
+r.squaredGLMM(mF)
+r.squaredGLMM(mF2)
+emmeans (mF, list( pairwise ~ group), adjust = "tukey")
+qqnorm(resid(mF))
+effectsize::eta_squared(mF)
+effectsize::eta_squared(mF2)
+rsq.lmm(mF,adj=FALSE)
+
+```
+
+```{r}
+Gap_final |>
+  ggplot(aes(x = group, y = key_resp_5_corr, fill = Condition)) +
+  geom_boxplot()
+```
+
+```{r}
+library(data.table)
+freqs <- Gap_final |>
+  group_by(group, condition) |>
+  summarise(total_correct = sum(key_resp_5_corr),
+            fract_correct = total_correct / n()) |>
+  arrange(condition, group)
+
+freqs |> data.table()
+```
+# Correct answers per group & condition, visualized as bar plot
+## i couldn't run this, showed me an error.
+
+```{r, fig.width=20, fig.height=6}
+freqs |>
+  ggplot(aes(x = group, y =key_resp_5_corr, fill = group)) +
+  geom_col() +
+  facet_wrap(~ condition, ncol = 4) +
+  theme(legend.position = "bottom")
+```
+
+# RTs per group & condition  ( also error )
+
+```{r}
+rts <- Gap_final|>
+  filter(!is.na(log_rt)) |>
+  group_by(group, condition) |> 
+  summarise(median_rt = median(log_rt),
+            iqr_rt = IQR(log_rt)) |> 
+  arrange(condition, group)
+
+rts |> data.table()
+```
+
+# RTs visualized using boxplots
+
+```{r, fig.width=20, fig.height=6}
+
+Gap_final |>
+  ggplot(aes(x = group, y = log_rt, fill = condition)) +
+  geom_boxplot() +
+  facet_wrap(~ condition, ncol = 4) +
+  theme(legend.position = "bottom")
+
+```
+
+
+# Anomalous participant: unusually large number of observations
+
+```{r}
+Gap_final|> 
+  group_by(participant, condition) |> 
+  count() |> 
+  pull(n) |> 
+  map_lgl(\(x) x == 23) |> 
+  all()
+```
+
+# Models (Accuracy) (Binomial Logistic Regression)
+#I first ran an intercept only model, with correct answers as the dependent variable, with  a random intercept for participants. Mod_0 does not include a fixed effect for group.
+#In Mod_2 I added group 
+#in mod 3 i added participant and item as random intercepts
+#AIC and BIC lower for mod_3 and significant improvement over model-0
+#Therefore, mod_3 is a better fit  for the data.
+## AHS > RT2 > HS1 > RT1
+## AHS = HS2
+
+## but with post hoc it showed no significant difference between AHS and RT2. only with mixed effect it did show.
+# HS2 = RT2 = AHS
+
+```{r}
+# mod0 <- glmer(as.factor(key_resp_5.CORR) ~ group + (1|group/participant) + (1|condition), family = binomial, data = GapTaskLong, control = glmerControl(check.conv.grad = .makeCC("warning", tol = 5e-2)))
+
+lbfgs_ctrl <- glmerControl()
+
+xls_nb <- Gap_final |>
+  mutate(condition = as.factor(condition) |> relevel(ref = "CONG"),
+         group = as.factor(group) |> relevel(ref = "AHS"),
+         correct = key_resp_5_corr == 1)
+
+mod_0 <- glmer(key_resp_5_corr ~ 1 + (1|participant),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               control = lbfgs_ctrl)
+
+mod_1 <- glmer(key_resp_5_corr ~ 1 + (1|participant) + (1|item),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               control = lbfgs_ctrl)
+
+mod_2 <- glmer(key_resp_5_corr ~ group + (1|participant),
+               family = binomial(link = "logit"),
+               data = Gap_final,
+               control = lbfgs_ctrl)
+
+mod_3 <- glmer(key_resp_5_corr ~ group + (1|participant) + (1|item),
+               family = binomial(link = "logit"),
+               data = Gap_final,
+               control = glmerControl(optimizer = "bobyqa"))
+
+mod_4 <- glmer(key_resp_5_corr ~ group + (hs1 + hs2 + rt1 + rt2) * condition + (1|participant) + (1|item), family = binomial(link = "logit"), data = Gap_final, nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_5 <- glmer(key_resp_5_corr ~ group + (hs1 + hs2 + rt1 + rt2) * condition + (1|participant) + (1|item) +(1+condition|participant), family = binomial(link = "logit"), data = Gap_final, nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+
+
+mod_6 <- glmer(key_resp_5_corr ~ group + (hs1 + hs2 + rt1 + rt2) * condition + (hs1 + hs2 + rt1 + rt2) * Arabic_scale + (hs1 + hs2 + rt1 + rt2) * English_scale + (hs1 + hs2 + rt1 + rt2) * Dom_scale + (1|participant) + (1|item), family = binomial(link = "logit"), data = Gap_final, nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_7 <- glmer(key_resp_5_corr ~ group + (hs1 + hs2 + rt1 + rt2) * condition + (hs1 + hs2 + rt1 + rt2) * Arabic_scale + (hs1 + hs2 + rt1 + rt2) * English_scale + (hs1 + hs2 + rt1 + rt2) * Dom_scale + (hs1 + hs2 + rt1 + rt2) * English_att_scale + (hs1 + hs2 + rt1 + rt2) * Arabic_att_scale + (1|participant) + (1|item), family = binomial(link = "logit"), data = Gap_final, nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+
+
+
+print(anova(mod_0, mod_1, mod_2, mod_3, mod_4, mod_5, mod_6, mod_7))
+```
+
+```{r}
+library(lmerTest)
+print(summary(mod_4))
+anova(mod_3)
+```
+##Model estimates (Accuracy with group)
+This clearly indicates a significant main effect is shown between the returnees and the AHS.
+
+```{r}
+model_params <- broom.mixed::tidy(mod_4)
+
+model_params|>
+  filter(!str_detect(term, "sd")) |>
+  ggplot(aes(x = term, y = estimate)) +
+  # geom_hline(yintercept = 1, linetype = "dotted", color = "black") +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0.1, color = "black")
+  geom_point(aes(color = term), size = 3) +
+  theme(legend.position = "bottom") +
+  labs(y = "Accuracy", x = "Group")
+```
+```{r}
+model_params <- broom.mixed::tidy(mod_4)
+model_params |>
+  filter(!str_detect(term, "sd")) |>
+  ggplot(aes(x = term, y = estimate, color = term)) +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0.3, color = "black") +
+  geom_point(size = 4) +
+  scale_color_manual(values = c("red", "blue", "green", "orange", "purple", "pink", "yellow", "maroon", "brown", "black")) +  # Adjust the colors as needed
+  theme(legend.position = "bottom")+
+  labs(y = "Accuracy", x = "Group")
+```
+```{r}
+library(lmerTest)
+print(summary(mod_7))
+anova(mod_7)
+```
+
+# Here I attempt to perform post-hoc by using emmeans for mod_3 (accuracy)
+
+```{r}
+library(emmeans)
+emmeans(mod_3, list(pairwise ~ group), adjust = "tukey")
+```
+```{r}
+library(ggplot2)
+ggplot(Gap_final, aes(x = group, y = log_rt, color = group)) +
+  geom_point() +
+  geom_smooth(method='lm',formula=y~x)
+```
+
+```{r}
+sjPlot::plot_model(mod_3)
+```
+
+
+# Models with RT ( when using log rt only without log residuals rts showed an effect)
+
+# RTS were log-transformed here only
+
+## AHS = HS2 = RT2
+## with length only a significant shown among HS2 against AHS
+# post hoc shows RT1 = HS1 and RT > RT1 and  AHS = HS2 = RT2
+
+```{r}
+mod0_rt <- lmer(log_rt ~ 1 + (1|participant), data = Gap_final)
+
+mod1_rt <- lmer(log_rt ~ 1 + (1|participant) + (1|item), data = Gap_final)
+
+mod2_rt <- lmer(log_rt ~ group + (1|participant), data = Gap_final)
+
+mod3_rt <- lmer(log_rt ~ group + length + (1|participant) + (1|item), data = Gap_final)
+
+mod4_rt <- lmer(log_rt ~ group + length + group*length + (1|participant) + (1|item) , data = Gap_final)
+
+
+
+print(anova(mod0_rt, mod1_rt, mod2_rt, mod3_rt, mod4_rt))
+```
+
+```{r}
+summary(mod3_rt)
+```
+
+
+```{r}
+ranef(mod4_rt)
+hist(ranef(mod4_rt)$participant[,1])
+hist(ranef(mod4_rt)$item[,1])
+hist(resid(mod4_rt))
+plot(mod5_rt)
+```
+
+
+
+
+# In the graph below it clearly shows a significant main effect between the AHS and the other groups.
+
+```{r}
+model_params_rt <- broom.mixed::tidy(mod3_rt)
+
+model_params_rt |> 
+  filter(!str_detect(term, "sd")) |>
+  ggplot(aes(x = term, y = estimate)) +
+  # geom_hline(yintercept = 1, linetype = "dotted", color = "black") +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0.1, color = "black") +
+  geom_point(aes(color = term), size = 3) +
+  theme(legend.position = "bottom") +
+  labs(y = "RT", x = "Group")
+```
+
+# Here I attempt to perform post-hoc by using emmeans for  (reaction time) only
+
+```{r}
+library(emmeans)
+emmeans(mod4_rt, list(pairwise ~ group), adjust = "bonferroni")
+```
+#Models with interaction with condition for ACCURACY
+
+```{r}
+settingAGQ=0
+```
+
+
+
+```{r}
+str(Gap_final)
+summary (Gap_final$key_resp_5_corr)
+```
+
+
+## interaction between group and condition for ACCURACY
+##condition and group as a fixed effects and a random intercept for participants and for items. “congruent” condition was the reference level for condition.
+
+
+## A significant effect among HS1 of Incongruent trials only against the AHS
+
+```{r}
+Gap_final$Dominance_score <- scale(Gap_final$Dominance_score, center = TRUE, scale = TRUE)
+Gap_final$English_use <- scale(Gap_final$English_use, center = TRUE, scale = TRUE)
+Gap_final$Arabic_use <- scale(Gap_final$Arabic_use, center = TRUE, scale = TRUE)
+colnames(Gap_final)[35] <- "Dom_scale"
+colnames(Gap_final)[27] <- "English_scale"
+colnames(Gap_final)[28] <- "Arabic_scale"
+Gap_final$English_attidutes <- scale(Gap_final$English_attidutes, center = TRUE, scale = TRUE)
+Gap_final$Arabic_attidutes <- scale(Gap_final$Arabic_attidutes, center = TRUE, scale = TRUE)
+Gap_final$Arabic_history <- scale(Gap_final$Arabic_history, center = TRUE, scale = TRUE)
+Gap_final$English_history <- scale(Gap_final$English_history, center = TRUE, scale = TRUE)
+colnames(Gap_final)[31] <- "English_att_scale"
+colnames(Gap_final)[32] <- "Arabic_att_scale"
+colnames(Gap_final)[25] <- "Eng_hist_scale"
+colnames(Gap_final)[26] <- "Arab_hist_scale"
+
+
+
+```
+
+
+
+```{r}
+
+
+
+mod_0cd <- glmer(key_resp_5_corr ~ 1 + (1|participant), 
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+             nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_1cd <- glmer(key_resp_5_corr ~ 1 + (1|participant) + (1|item), 
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control= lbfgs_ctrl)
+
+mod_2cd <- glmer(key_resp_5_corr ~ group + (1|participant), 
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+              nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_3cd <- glmer(key_resp_5_corr ~ group + (1|participant) + (1|item), 
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+             nAGQ=settingAGQ,control  = lbfgs_ctrl)
+
+mod_4cd <- glmer(key_resp_5_corr ~ group * condition + (1|participant),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_5cd <- glmer(key_resp_5_corr ~ hs1+hs2+rt1+rt2 + Condition+ hs1+hs2+rt1+rt2 * Condition + (1|participant) + (1|item),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_6cd <- glmer(key_resp_5_corr ~ hs1+hs2+rt1+rt2*Dom_scale + (1|participant) + (1|item),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_7cd <- glmer(key_resp_5_corr ~ hs1+hs2+rt1+rt2 + Condition + hs1+hs2+rt1+rt2*Condition + hs1+hs2+rt1+rt2*Dom_scale + hs1+hs2+rt1+rt2*English_scale + hs1+hs2+rt1+rt2*Arabic_scale + (1|participant) + (1|item) + (1+Condition|participant),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_8cd <- glmer(key_resp_5_corr ~ hs1+hs2+rt1+rt2 + Condition + hs1+hs2+rt1+rt2*Condition + Dom_scale + English_scale + Arabic_scale + (1|participant) + (1|item),
+              family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_9cd <- glmer(key_resp_5_corr ~ hs1+hs2+rt1+rt2 + Condition + hs1+hs2+rt1+rt2*Condition + Dom_scale + English_scale + Arabic_scale + English_att_scale + Arabic_att_scale + Arab_hist_scale + Eng_hist_scale + (1|participant) + (1|item),
+              family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_10cd <- glmer(key_resp_5_corr ~ hs1+hs2+rt1+rt2 + Condition + Dom_scale + English_scale + Arabic_scale + hs1+hs2+rt1+rt2*Condition + hs1+hs2+rt1+rt2*Dom_scale + hs1+hs2+rt1+rt2*English_scale + hs1+hs2+rt1+rt2*Arabic_scale + (1|participant) + (1|item) + (1+Condition|participant),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_11cd <- glmer(key_resp_5_corr ~ hs1+hs2+rt1+rt2 + Condition + Dom_scale + English_scale + Arabic_scale + hs1*Condition + hs2*Condition+ rt1*Condition + rt2*Condition + hs1+hs2+rt1+rt2*Dom_scale + (1|participant) + (1|item),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_12cd <- glmer(key_resp_5_corr ~ group + (hs1 + hs2 + rt1 + rt2) * condition + (hs1 + hs2 + rt1 + rt2) * Arabic_scale + (hs1 + hs2 + rt1 + rt2) * English_scale + (1|participant) + (1|item), family = binomial(link = "logit"), data = Gap_final, nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_13cd <- glmer(key_resp_5_corr ~ (hs1 + hs2 + rt1 + rt2) * condition + (1|participant) + (1|item), family = binomial(link = "logit"), data = Gap_final, nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_14cd <- glmer(key_resp_5_corr ~ group * condition + (1|participant)  + (1|item),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+mod_15cd <- glmer(key_resp_5_corr ~ group * Condition + (1|participant)  + (1|item),
+               family = binomial(link = "logit"), 
+               data = Gap_final,
+               nAGQ=settingAGQ,control = lbfgs_ctrl)
+
+
+
+
+
+print(anova(mod_0cd, mod_1cd, mod_2cd, mod_3cd, mod_4cd, mod_5cd,mod_6cd,mod_7cd,mod_8cd,mod_9cd,mod_10cd,mod_11cd, mod_12cd, mod_13cd, mod_14cd, mod_15cd))
+```
+
+```{r}
+summary(mod_15cd)
+```
+
+```{r}
+summary(mod_9cd)
+```
+
+
+```{r}
+# Generate sample data
+set.seed(123)
+key_resp_5_corr <- as.character(runif(100))  # Variable 1 (sample data)
+English_scale <- as.character(runif(100))  # Variable 2 (sample data)
+group <- rep(c("RT1", "RT2"), each = 50)  # Grouping factor
+
+# Create a data frame
+Gap_final <- data.frame(key_resp_5_corr, English_scale, group)
+
+# Specify the group for correlation and plotting
+group_for_plot <- "RT1"
+
+# Filter the data for the specified group
+filtered_data <- Gap_final[Gap_final$group == group_for_plot, ]
+
+# Convert variables to numeric
+filtered_data$key_resp_5_corr <- as.numeric(filtered_data$key_resp_5_corr)
+filtered_data$English_scale <- as.numeric(filtered_data$English_scale)
+
+# Calculate the correlation within the specified group
+correlation <- cor(filtered_data$key_resp_5_corr, filtered_data$English_scale, use = "complete.obs")
+
+print(correlation)
+
+# Create a scatter plot for the specified group
+ggplot(filtered_data, aes(x = key_resp_5_corr, y = English_scale, color = group)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  xlab("ACCURACY") +
+  ylab("ENGLISH USE") +
+  ggtitle(paste("Scatter Plot:", group_for_plot, "(Correlation:", round(correlation, 2), ")"))
+```
+
+
+```{r}
+ggplot(Gap_final, aes(x = key_resp_5_corr, y =English_scale, color= group)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  xlab("accuracy") +
+  ylab("english use") +
+  ggtitle("Scatter Plot: accuracy vs english use")
+```
+
+
+```{r}
+df <- data.frame(residuals = residuals, English_scale= English_scale)
+ggplot(df, aes(x = English_scale, y = residuals)) +
+  geom_point() +
+  xlab("English_use") +
+  ylab("Residuals") +
+  ggtitle("Scatter Plot: Residuals vs English use")
+```
+
+```{r}
+str(Gap_final)
+```
+
+
+```{r}
+Gap_final$group <- as.factor(Gap_final$group)
+Gap_final$item <- as.factor(Gap_final$item)
+Gap_final$condition <- as.factor(Gap_final$condition)
+Gap_final$key_resp_5_corr <- as.factor(Gap_final$key_resp_5_corr)
+
+str(Gap_final)
+```
+
+
+```{r}
+print(summary(mod_5cd))
+anova(mod_5cd)
+```
+```{r}
+library(ggplot2)
+
+# Creating example data
+set.seed(123)
+df <- data.frame(
+  group = rep(c("AHS", "HS2"), each = 50),
+  condition = rep(c("congruent", "incongruent"), times = 50),
+  outcome = rnorm(100, mean = 10, sd = 2)
+)
+
+# Creating the interaction plot
+ggplot(df, aes(x = condition, y = outcome, color = group, group = group)) +
+  geom_point() +
+  geom_line() +
+  labs(x = "Condition", y = "Outcome") +
+  scale_color_manual(values = c("blue", "red"),
+                     labels = c("AHS", "HS2")) +
+  theme_minimal()
+```
+```{r}
+# Creating example data
+set.seed(123)
+df <- data.frame(
+  group = rep(c("AHS", "RT2"), each = 50),
+  condition = rep(c("CONG"), times = 50),
+  outcome = rnorm(100, mean = 10, sd = 2)
+)
+
+# Creating the interaction plot
+ggplot(df, aes(x = condition, y = outcome, color = group, group = group)) +
+  geom_point(position = position_dodge(width = 0.2)) +
+  geom_line(position = position_dodge(width = 0.2)) +
+  labs(x = "Condition", y = "Outcome") +
+  scale_color_manual(values = c("blue", "red"),
+                     labels = c("AHS", "RT2")) +
+  theme_minimal()
+```
+
+```{r}
+library(emmeans)
+emmeans(mod_12cd, list(pairwise ~ group), adjust = "tukey")
+```
+
+```{r}
+emmeans(Model5, list(pairwise ~ Group), adjust = "bonferroni")
+emmeans(mod_11_rtcd, list(pairwise ~), adjust = "bonferroni")
+```
+
+# Model estimates for Accuracy
+
+```{r}
+model_params_cd <- broom.mixed::tidy(mod_5cd)
+
+model_params_cd |> 
+  filter(!str_detect(term, "sd")) |>
+  ggplot(aes(x = term, y = estimate)) +
+  # geom_hline(yintercept = 1, linetype = "dotted", color = "black") +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0.1, color = "black") +
+  geom_point(aes(color = term), size = 3) +
+  theme(legend.position = "bottom") +
+  labs(y = "Logit", x = "Group") +
+  scale_color_viridis_d() +
+  coord_flip()
+
+```
+
+# RT (interaction with condition)
+tried both log rt and log rt residuals showed mod 6 was a better fit
+
+```{r}
+
+mod_0_rtcd <- lmer(log_rt ~ 1 + (1|participant), 
+               data = Gap_final) 
+
+mod_1_rtcd <- lmer(log_rt ~ hs1+hs2+rt1+rt2 + (1|participant), 
+               data = Gap_final)
+
+mod_2_rtcd<- lmer(log_rt ~ hs1+hs2+rt1+rt2 + (1|participant) + (1|item), data = Gap_final)
+
+mod_3_rtcd <- lmer(log_rt ~ hs1+hs2+rt1+rt2 * Condition + (1|participant) + (1|item), data = Gap_final)
+
+mod_4_rtcd <- lmer(log_rt ~ length + (hs1 + hs2 + rt1 + rt2) * Condition + (1|participant) + (1|item), data = Gap_final,settingAGQ, control = lmerControl(optimizer= "bobyqa"))
+
+mod_5_rtcd <- lmer(log_rt ~ length + (hs1 + hs2 + rt1 + rt2) * Condition + (1|participant) + (1|item) + (1+condition|participant), data = Gap_final,settingAGQ, control = lmerControl(optimizer= "bobyqa"))
+
+mod_6_rtcd <- lmer(log_rt ~ hs1+hs2+rt1+rt2 + length + Condition + Dom_scale + hs1+hs2+rt1+rt2 * Condition +hs1+hs2+rt1+rt2 * Dom_scale + hs1+hs2+rt1+rt2*Arabic_scale + hs1+hs2+rt1+rt2*English_scale+ (1|participant) + (1|item), data = Gap_final,settingAGQ)
+
+mod_7_rtcd <- lmer(log_rt ~ hs1+hs2+rt1+rt2 + length + hs1+hs2+rt1+rt2 * Condition +hs1+hs2+rt1+rt2 * Dom_scale + hs1+hs2+rt1+rt2*English_scale + hs1+hs2+rt1+rt2*Arabic_scale + (1|participant) + (1|item), data = Gap_final,settingAGQ)
+
+
+
+mod_8_rtcd <- lmer(log_rt ~ hs1+hs2+rt1+rt2 + length + Condition + hs1+hs2+rt1+rt2 * Condition +hs1+hs2+rt1+rt2 * Dom_scale + hs1+hs2+rt1+rt2*English_scale + hs1+hs2+rt1+rt2*Arabic_scale + (1|participant) + (1|item), data = Gap_final,settingAGQ, control = lmerControl(optimizer= "bobyqa"))
+
+
+
+
+
+mod_9_rtcd <- lmer(log_rt ~ length + group + (hs1 + hs2 + rt1 + rt2) * Condition + (hs1 + hs2 + rt1 + rt2) * Arabic_scale + (hs1 + hs2 + rt1 + rt2) * English_scale + (1|participant) + (1|item)  , data = Gap_final,settingAGQ, control = lmerControl(optimizer= "bobyqa"))
+
+mod_10_rtcd <- lmer(log_rt ~ length + group + (hs1 + hs2 + rt1 + rt2) * Condition + (1|participant) + (1|item) + (1+condition|participant), data = Gap_final,settingAGQ, control = lmerControl(optimizer= "bobyqa"))
+
+
+
+
+anova(mod_0_rtcd, mod_1_rtcd, mod_2_rtcd, mod_3_rtcd, mod_4_rtcd, mod_5_rtcd, mod_6_rtcd, mod_7_rtcd, mod_8_rtcd, mod_9_rtcd, mod_10_rtcd)
+```
+
+```{r}
+Model1 <- glmer(LDTAC_Lists_ABC ~ 1 + Group + Test_Time + Group*Test_Time + (1|Word/Participant_Id) + (Group|Participant_Id), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000)),
+```
+
+
+
+```{r}
+summary(mod_5_rtcd)
+```
+
+```{r}
+model_params <- broom.mixed::tidy(mod_5_rtcd)
+model_params |>
+  filter(!str_detect(term, "sd")) |>
+  ggplot(aes(x = term, y = estimate, color = term)) +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0.3, color = "black") +
+  geom_point(size = 4) +
+  scale_color_manual(values = c("red", "blue", "green", "orange", "purple", "pink", "yellow", "maroon", "black", "brown", "beige", "grey")) +  # Adjust the colors as needed
+  theme(legend.position = "bottom") +
+  labs(y = "RT", x = "Group")
+```
+
+```{r}
+anova(mod_6_rtcd)
+
+library(lmerTest)
+```
+
+```{r}
+plot_model(mod_5_rtcd, type = "diag", show.values = TRUE)
+```
+
+```{r}
+model_params_rtcd <- broom.mixed::tidy(mod_11_rtcd)
+
+model_params_rtcd |> 
+  filter(!str_detect(term, "sd")) |>
+  ggplot(aes(x = term, y = estimate)) +
+  # geom_hline(yintercept = 1, linetype = "dotted", color = "black") +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error), width = 0.1, color = "black") +
+  geom_point(aes(color = term), size = 3) +
+  theme(legend.position = "bottom") +
+  scale_color_viridis_d() +
+  labs(y = "Estimate", x = "Group") +
+  coord_flip()
+```
+
+
+```{r}
+ggplot(data= Gap_final, aes (x=group, y=Dominance_score, fill = group)) +
+  geom_bar(stat = "summary")
+```
+
+```{r}
+ggplot(data= Gap_final, aes (x=group, y=English_use, fill = group)) +
+  geom_bar(stat = "summary")
+```
+```{r}
+ggplot(data= Gap_final, aes (x=group, y=Arabic_global, fill = group)) +
+  geom_bar(stat = "summary") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 0.5), size = 4, show.legend = FALSE)
+```
+
+```{r}
+ggplot(data = Gap_final, aes(x = group, y = English_history, fill = group)) +
+  geom_bar(stat = "summary") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE)
+```
+
+```{r}
+library(ggplot2)
+library(ggplot2)
+
+ggplot(data = Gap_final, aes(x = group, fill = group)) +
+  geom_bar(aes(y = Arabic_us), stat = "summary") +
+  geom_bar(aes(y = English_use), stat = "summary", position = "dodge") +
+  stat_summary(
+    fun.data = mean_sdl, fun.args = list(mult = 1),
+    geom = "text", aes(label = round(..y.., digits = 2)),
+    position = position_stack(vjust = 0.5), size = 4, show.legend = FALSE
+  ) +
+  facet_grid(. ~ group, scales = "free_x")
+
+
+```
+
+
+```{r}
+ggplot(data= Gap_final, aes (x=group, y=English_history, fill = group)) +
+  geom_bar(stat = "summary")
+```
+
+## plot language dominance of 5 bilingual groups as functions of between-language Substractive Differentials, which indicates the direction of dominance.
+#the figure shows clearly that AHS, HS2, HS1 are English-dominant, RT1 are Arabic-dominant whereas RT2 are almost balanced bilinguals
+```{r}
+figure1 <- ggplot (data=Gap_final, aes (x=Dominance_score, y=group, fill =group))+
+  geom_boxplot (alpha=0, width=0.3)+
+  stat_summary() +
+  stat_summary (geom = "errorbar",fun.data = mean_cl_normal, width=0.1)+
+  theme_classic() + 
+  labs (x= "Between-language Subtractive Differential",
+        y= "Bilingual group")
+figure1
+```
+```{r}
+figure1 <- ggplot(data = Gap_final, aes(x = Dominance_score, y = group, fill = group)) +
+  geom_boxplot(alpha = 0, width = 0.3) +
+  stat_summary() +
+  stat_summary(geom = "errorbar", fun.data = mean_cl_normal, width = 0.1) +
+  theme_classic() +
+  labs(x = "Between-language Subtractive Differential",
+       y = "Bilingual group") +
+  theme(
+    axis.title = element_text(size = 16),     # Adjust the font size for axis titles
+    axis.text = element_text(size = 14),      # Adjust the font size for axis tick labels
+    plot.title = element_text(size = 18)      # Adjust the font size for plot title
+  )
+
+figure1
+```
+
+```{r}
+# Create a custom color palette for your groups
+custom_palette <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
+
+figure1 <- ggplot(data = Gap_final, aes(x = Dominance_score, y = group, fill = group)) +
+  geom_boxplot(alpha = 0.7, width = 0.5) +   # Adjust alpha and width as needed
+  stat_summary(geom = "point", fun = mean, shape = 18, size = 3) +
+  stat_summary(geom = "errorbar", fun.data = mean_cl_normal, width = 0.2) +
+  scale_fill_manual(values = custom_palette) +  # Apply the custom color palette
+  theme_minimal() +                           # Use a different theme for a cleaner look
+  labs(x = "Between-language Subtractive Differential",
+       y = "Bilingual group") +
+  theme(
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14),
+    plot.title = element_text(size = 18)
+  )
+
+figure1
+```
+
+```{r}
+ggplot(data = Gap_final, aes(x = group, y = English_use, fill = group)) +
+  geom_bar(stat = "summary") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE)
+```
+```{r}
+ggplot(data = Gap_final, aes(x = group, y = Arabic_use, fill = group)) +
+  geom_bar(stat = "summary") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE)
+```
+```{r}
+# Create a single ggplot object
+combined_plot <- ggplot(data = Gap_final, aes(x = group)) +
+  geom_bar(aes(y = Arabic_use, fill = group), stat = "summary") +
+  stat_summary(data = Gap_final, aes(x = group, y = Arabic_use), fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE) +
+  geom_bar(aes(y = English_use, fill = group), stat = "summary", position = "dodge") +
+  stat_summary(data = Gap_final, aes(x = group, y = English_use), fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE) +
+  labs(title = "Arabic and English Use")
+
+# Use facet_wrap to separate by titles
+combined_plot <- combined_plot + facet_wrap(~title, scales = "free_x")
+
+# Display the combined plot
+print(combined_plot)
+```
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+# Your first ggplot code
+plot1 <- ggplot(data = Gap_final, aes(x = group, y = English_use, fill = group)) +
+  geom_bar(stat = "summary") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE)
+
+# Your second ggplot code
+plot2 <- ggplot(data = Gap_final, aes(x = group, y = Arabic_use, fill = group)) +
+  geom_bar(stat = "summary") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE)
+
+# Combine the two plots side by side
+combined_plot <- grid.arrange(plot1, plot2, ncol = 2)
+
+# Print the combined plot
+print(combined_plot)
+In this code, we first create your two individual ggplot plots (plot1 and plot2) as you provided. Then, we use the grid.arrange function from the gridExtra package to arrange these two plots side by side in a single picture. The ncol argument specifies the number of columns, which in this case is set to 2 to place the plots side by side. Finally, we print the combined_plot to display it. Make sure you have the gridExtra and ggplot2 packages installed in your R environment. You can install them using the install.packages function if you haven't already.
+
+
+
+
+
+```
+```{r}
+# Your first ggplot code with Arabic use
+plot1 <- ggplot(data = Gap_final, aes(x = group, y = Arabic_use, fill = group)) +
+  geom_bar(stat = "summary") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE) +
+  labs(title = "Arabic Use", y = bquote(bold("Arabic Use")))
+
+# Your second ggplot code with English use
+plot2 <- ggplot(data = Gap_final, aes(x = group, y = English_use, fill = group)) +
+  geom_bar(stat = "summary") +
+  stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE) +
+  labs(title = "English Use", y = bquote(bold("English Use")))
+
+# Combine the two plots side by side
+combined_plot <- grid.arrange(plot1, plot2, ncol = 2)
+
+# Print the combined plot
+print(combined_plot)
+In this code:
+
+I've added labs(title = "Arabic Use", y = bquote(bold("Arabic Use"))) to the first plot (plot1) to set the title to "Arabic Use" and make the y-axis label bold and black.
+Similarly, for the second plot (plot2), I've added labs(title = "English Use", y = bquote(bold("English Use"))) to set the title to "English Use" and make the y-axis label bold and black.
+The rest of the code remains the same as in the previous answer to combine the plots side by side and print the combined plot.
+Now, your combined plot will have separate titles for Arabic Use and English Use, and the y-axis labels will be in bold and black.
+
+
+
+
+
+```
+
+
+
+
+```{r}
+# Create a single ggplot object
+combined_plot <- ggplot(data = Gap_final, aes(x = group)) +
+  geom_bar(aes(y = Arabic_use, fill = group), stat = "summary") +
+  stat_summary(aes(y = Arabic_use), fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE) +
+  geom_bar(aes(y = English_use, fill = group), stat = "summary", position = "dodge") +
+  stat_summary(aes(y = English_use), fun.data = mean_sdl, fun.args = list(mult = 1), 
+               geom = "text", aes(label = round(..y.., digits = 2)),
+               position = position_stack(vjust = 1.1), size = 4, show.legend = FALSE) +
+  labs(title = "Arabic and English Use")
+
+# Use facet_wrap to separate by titles
+combined_plot <- combined_plot + facet_wrap(~title, scales = "free_x")
+
+# Display the combined plot
+print(combined_plot)
+```
+
+
+```{r}
+# Calculate the required summary statistics
+summary_stats <- Gap_final %>%
+  group_by(group) %>%
+  summarise(
+    mean_diff = mean(Dominance_score),
+    min_diff = min(Dominance_score),
+    max_diff = max(Dominance_score),
+    sd_diff = sd(Dominance_score)
+  )
+print(summary_stats)
+```
+```{r}
+install.packages("gamlss")
+
+library(gamlss)
+
+ModelQ1 <- gamlss(Dominance_score ~ group, family = BE, data = na.omit(Gap_final))
+summary(ModelQ1)
+confint(ModelQ1)
+```
+
+
+
+#Run a regression model to confirm the hypothesis that whether RT2 is more balanced than the other groups.
+#This time, the outcome variable is the Dominance Index (ratio) proposed by Birdsong (2016). This measure was chosen because it describes the language balance as a continuous variable. An one-inflated beta-regression was run because the outcome varies between (0, 1]. 
+
+```{r}
+Gap_final$Dominance_score <- scale(Gap_final$Dominance_score)
+colnames(Gap_final)[35] <- "scale_dominance"
+```
+
+```{r}
+hist(Gap_final$scale_dominance)
+log_dominance <- log(Gap_final$scale_dominance)
+hist(log_dominance)
+```
+
+```{r}
+lmer(Dominance_score ~ group + (1|participant), data= Gap_final)
+```
+x
+
+```{r}
+summary (Model_dom)
+```
+
+```{r}
+# Conduct a one-way ANOVA
+myanova <- aov(English_use ~ group, data = Gap_final)
+
+# Check the summary of the ANOVA results
+summary(myanova)
+
+# Conduct a post-hoc Tukey test
+mytukey <- TukeyHSD(myanova)
+
+# Check the results of the Tukey test
+mytukey
+```
+
+```{r}
+hist(Gap_final$English_use, main = "Histogram of Data")
+```
+```{r}
+spearman_result <- cor(Gap_final$gap_acc_cong, Gap_final$English_use, method = "spearman")
+```
+
+
+
